@@ -1,0 +1,86 @@
+version: '3.7'
+
+services:
+    db:
+        image: postgres:12.0-alpine
+        volumes:
+            - postgres_data:/var/lib/postgresql/data/
+        environment:
+            - POSTGRES_USER=db_admin
+            - POSTGRES_PASSWORD=010202020aA##
+            - POSTGRES_DB=alsharakaDB
+
+    backend:
+        restart: unless-stopped
+        build:
+            context: .
+            dockerfile: ./docker/backend/Dockerfile
+        entrypoint: /app/docker/backend/wsgi-entrypoint.sh
+        volumes:
+            - static_volume:/app/backend/server/django_static
+            - static_image:/app/backend/server/media
+        expose:
+            - 8000
+        env_file: ./env/.django.prod
+        environment:
+            - SECRET_KEY=tv==u93r#vx(-f6xtt3&+npkjdl_h=zz6hgenha@_p=2s!!1fc
+            - CELERY_BROKER_URL=redis://redis:6379/0
+            - CELERY_RESULT_BACKEND=redis://redis:6379/0
+            - PROTOCOL=http
+            - DOMAIN=localhost:3000
+            
+            - POSTGRES_DB=alsharakaDB
+            - POSTGRES_USER=db_admin
+            - POSTGRES_PASSWORD=010202020aA##
+            
+        depends_on: 
+            - db
+        links:
+            - redis
+            - db
+    nextjs:
+      build:
+        context: .
+        dockerfile: ./docker/nginx/Dockerfile
+
+    nginx: 
+        restart: unless-stopped
+        build:
+            context: .
+            dockerfile: ./docker/nginx/Dockerfile  
+        ports:
+            - 8084:80
+        volumes:
+            - static_volume:/app/backend/server/django_static
+            - static_image:/app/backend/server/media
+            - ./docker/nginx/development:/etc/nginx/conf.d
+        depends_on:
+            - nextjs 
+            - backend
+
+    pgbackups:
+        container_name: Backup
+        image: prodrigestivill/postgres-backup-local
+        restart: always
+        volumes:
+            - ./backup:/backups
+        links:
+            - db:db
+        depends_on:
+            - db
+        environment:
+            - POSTGRES_HOST=db
+            - POSTGRES_DB=alsharakaDB 
+            - POSTGRES_USER=db_admin
+            - POSTGRES_PASSWORD=010202020aA##
+            - POSTGRES_EXTRA_OPTS=-Z9 --schema=public --blobs
+            - SCHEDULE=@every 24h0m00s
+            - BACKUP_KEEP_DAYS=7
+            - BACKUP_KEEP_WEEKS=4
+            - BACKUP_KEEP_MONTHS=6
+            - HEALTHCHECK_PORT=81
+
+volumes:
+    static_volume: {}
+    static_image: {}
+    postgres_data:
